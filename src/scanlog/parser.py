@@ -24,6 +24,15 @@ def parse_output(raw_output: str) -> list[dict]:
                 "virus_name": virus_name,
                 "raw_line": line,
             })
+        elif (status_part.endswith(" ERROR") or status_part == "ERROR"
+              or status_part == "Empty file" or status_part == "Symbolic link"):
+            # ClamAV がファイルにアクセスできなかった（シンボリックリンク・空ファイル・権限不足）
+            entries.append({
+                "scanned_path": path,
+                "entry_status": "clamav_error",
+                "virus_name": None,
+                "raw_line": line,
+            })
         else:
             entries.append({
                 "scanned_path": path,
