@@ -58,6 +58,7 @@
 - MVPに必要な最小実装を行う
 - 完了条件を満たす
 - 実装内容を簡潔に報告する
+- **PR 作成前に issue の Acceptance Criteria と Test Plan を全項目実行・確認する**
 - 実装完了後に必ず Pull Request を作成する
 
 ---
@@ -79,6 +80,7 @@ Supervisor は以下の流れで進行すること：
 
 - **ブランチは必ず最新の main から作成する**
 - 依存 issue が複数ある場合は、それらを main にマージ済みであることを確認してから着手する
+- **PR 作成前に Test Plan を全項目実行し、結果を確認する**
 - issue 実装完了後は必ず Pull Request を作成する
 - PR マージ後に main を更新してから次の issue に進む
 
