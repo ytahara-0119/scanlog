@@ -68,3 +68,15 @@ def get_latest_plan(session: Session) -> ScanPlan | None:
 
 def get_plan_items(session: Session, plan_id: int) -> list[PlanItem]:
     return session.query(PlanItem).filter(PlanItem.plan_id == plan_id).all()
+
+
+def get_pending_plan_items(session: Session, plan_id: int) -> list[PlanItem]:
+    """execution_status が pending または failed の plan_items を返す。"""
+    return (
+        session.query(PlanItem)
+        .filter(
+            PlanItem.plan_id == plan_id,
+            PlanItem.execution_status.in_(["pending", "failed"]),
+        )
+        .all()
+    )
