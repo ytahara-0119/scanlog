@@ -37,6 +37,8 @@ feature/issueXX-<short-name>
 - issue 実装完了後に必ず `gh pr create` で PR を作成する
 - base ブランチは常に `main`
 - PR タイトルは `feat(issueXX): <タイトル>` 形式
+- **PR 作成前に Test Plan の全項目を実行し、全て通過していることを確認する**
+- Test Plan に未実施・失敗項目がある場合は PR を作成しない
 - 次の issue に着手する前に依存 issue の PR が main にマージ済みであること
 
 ---
