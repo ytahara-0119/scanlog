@@ -30,6 +30,9 @@ class PlanItem(Base):
     selected: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     excluded_by_user: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     exclude_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    batch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_batches.id"), nullable=True)
+    execution_status: Mapped[str | None] = mapped_column(Text, nullable=True, default="pending")
+    last_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_runs.id"), nullable=True)
 
 
 class ScanRun(Base):
@@ -42,11 +45,24 @@ class ScanRun(Base):
     status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ScanBatch(Base):
+    __tablename__ = "scan_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_runs.id"), nullable=True)
+    batch_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    command_line: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class ScanResult(Base):
     __tablename__ = "scan_results"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_runs.id"), nullable=True)
+    batch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_batches.id"), nullable=True)
     plan_item_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("plan_items.id"), nullable=True)
     target_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_type: Mapped[str | None] = mapped_column(Text, nullable=True)
