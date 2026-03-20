@@ -13,6 +13,30 @@ from scanlog.scanner import run_scan
 app = typer.Typer(invoke_without_command=True)
 
 
+def _calc_result_status(entries: list[dict]) -> str:
+    """clamav_error はスキャン結果に影響させない。infected > error > clean の優先順位。"""
+    if any(e["entry_status"] == "infected" for e in entries):
+        return "infected"
+    if any(e["entry_status"] == "error" for e in entries):
+        return "error"
+    return "clean"
+
+
+def _print_scan_result(entries: list[dict], result_status: str) -> None:
+    typer.echo(f"\nResult: {result_status.upper()}")
+    for e in entries:
+        if e["entry_status"] == "infected":
+            typer.echo(f"  [INFECTED] {e['scanned_path']} ({e['virus_name']})")
+        elif e["entry_status"] == "error":
+            typer.echo(f"  [ERROR]    {e['scanned_path']}")
+    clamav_errors = [e for e in entries if e["entry_status"] == "clamav_error"]
+    if clamav_errors:
+        typer.echo(f"  {len(clamav_errors)} file(s) skipped (could not be accessed by ClamAV).")
+    clean_count = sum(1 for e in entries if e["entry_status"] == "clean")
+    if result_status == "clean":
+        typer.echo(f"  All {clean_count} file(s) are clean.")
+
+
 @app.callback()
 def main(ctx: typer.Context) -> None:
     init_db()
@@ -75,13 +99,7 @@ def scan(path: str = typer.Argument(..., help="スキャン対象のファイル
             raise typer.Exit(1)
 
         entries = parse_output(raw_output)
-
-        if any(e["entry_status"] == "infected" for e in entries):
-            result_status = "infected"
-        elif any(e["entry_status"] == "error" for e in entries):
-            result_status = "error"
-        else:
-            result_status = "clean"
+        result_status = _calc_result_status(entries)
 
         result = ScanResult(
             run_id=run.id,
@@ -107,15 +125,7 @@ def scan(path: str = typer.Argument(..., help="スキャン対象のファイル
         run.status = run_status
         run.finished_at = datetime.now()
 
-    # 結果表示
-    typer.echo(f"\nResult: {result_status.upper()}")
-    for e in entries:
-        if e["entry_status"] == "infected":
-            typer.echo(f"  [INFECTED] {e['scanned_path']} ({e['virus_name']})")
-        elif e["entry_status"] == "error":
-            typer.echo(f"  [ERROR]    {e['scanned_path']}")
-    if result_status == "clean":
-        typer.echo(f"  All {len(entries)} file(s) are clean.")
+    _print_scan_result(entries, result_status)
 
 
 @app.command()
@@ -241,14 +251,7 @@ def execute(plan_id: int = typer.Option(..., "--plan-id", help="実行するプ�
             continue
 
         entries = parse_output(raw_output)
-
-        if any(e["entry_status"] == "infected" for e in entries):
-            result_status = "infected"
-        elif any(e["entry_status"] == "error" for e in entries):
-            result_status = "error"
-        else:
-            result_status = "clean"
-
+        result_status = _calc_result_status(entries)
         all_results.append((item, raw_output, exit_code, entries, result_status))
 
     with get_session() as session:
@@ -292,6 +295,9 @@ def execute(plan_id: int = typer.Option(..., "--plan-id", help="実行するプ�
         for e in entries:
             if e["entry_status"] == "infected":
                 typer.echo(f"    [INFECTED] {e['scanned_path']} ({e['virus_name']})")
+        clamav_errors = [e for e in entries if e["entry_status"] == "clamav_error"]
+        if clamav_errors:
+            typer.echo(f"    {len(clamav_errors)} file(s) skipped (could not be accessed by ClamAV).")
 
 
 if __name__ == "__main__":
