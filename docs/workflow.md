@@ -1,5 +1,18 @@
 # docs/workflow.md
 
+## Issue 一覧と状態
+
+| Issue   | タイトル                          | 依存        | 状態    |
+| ------- | --------------------------------- | ----------- | ------- |
+| issue01 | 環境構築（uv / Typer / SQLAlchemy）| なし        | pending |
+| issue02 | DBモデル定義とリポジトリ基盤       | issue01     | pending |
+| issue03 | ClamAV実行とパース                 | issue01     | pending |
+| issue04 | scan コマンド（手動スキャン）      | issue02,03  | pending |
+| issue05 | collector 実装（対象抽出ロジック） | issue01     | pending |
+| issue06 | collect/preview/approve/execute   | issue04,05  | pending |
+
+---
+
 ## 基本フロー
 
 1. 人間が Supervisor に指示する
