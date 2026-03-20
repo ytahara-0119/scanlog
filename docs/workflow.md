@@ -4,12 +4,12 @@
 
 | Issue   | タイトル                          | 依存        | 状態    |
 | ------- | --------------------------------- | ----------- | ------- |
-| issue01 | 環境構築（uv / Typer / SQLAlchemy）| なし        | pending |
-| issue02 | DBモデル定義とリポジトリ基盤       | issue01     | pending |
-| issue03 | ClamAV実行とパース                 | issue01     | pending |
-| issue04 | scan コマンド（手動スキャン）      | issue02,03  | pending |
-| issue05 | collector 実装（対象抽出ロジック） | issue01     | pending |
-| issue06 | collect/preview/approve/execute   | issue04,05  | pending |
+| issue01 | 環境構築（uv / Typer / SQLAlchemy）| なし        | done（PR未） |
+| issue02 | DBモデル定義とリポジトリ基盤       | issue01     | done（PR未） |
+| issue03 | ClamAV実行とパース                 | issue01     | done（PR未） |
+| issue04 | scan コマンド（手動スキャン）      | issue02,03  | done（PR#1） |
+| issue05 | collector 実装（対象抽出ロジック） | issue04     | pending      |
+| issue06 | collect/preview/approve/execute   | issue04,05  | pending      |
 
 ---
 
@@ -18,15 +18,26 @@
 1. 人間が Supervisor に指示する
 2. Supervisor が issue を作成する
 3. issue ごとに branch を定義する
-4. Implementer が実装する
-5. 完了後、人間確認で停止
-6. 承認後、次の issue に進む
+4. Implementer が実装する（ブランチは必ず最新 main から作成）
+5. 実装完了後に Pull Request を作成する
+6. 人間が PR をレビュー・マージする
+7. main を最新に更新してから次の issue に進む
+8. 完了後、人間確認で停止
 
 ---
 
 ## ブランチ命名
 
 feature/issueXX-<short-name>
+
+---
+
+## PR 作成ルール
+
+- issue 実装完了後に必ず `gh pr create` で PR を作成する
+- base ブランチは常に `main`
+- PR タイトルは `feat(issueXX): <タイトル>` 形式
+- 次の issue に着手する前に依存 issue の PR が main にマージ済みであること
 
 ---
 
