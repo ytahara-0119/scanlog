@@ -5,10 +5,10 @@ from typing import Optional
 import typer
 
 from scanlog.collector import collect as do_collect
-from scanlog.models import PlanItem, ScanPlan, ScanResult, ScanResultEntry, ScanRun
+from scanlog.models import PlanItem, ScanBatch, ScanPlan, ScanResult, ScanResultEntry, ScanRun
 from scanlog.parser import parse_output
-from scanlog.repository import get_latest_plan, get_plan_by_id, get_plan_items, get_session, init_db
-from scanlog.scanner import run_scan
+from scanlog.repository import get_latest_plan, get_pending_plan_items, get_plan_by_id, get_plan_items, get_session, init_db
+from scanlog.scanner import run_batch_scan, run_scan
 
 app = typer.Typer(invoke_without_command=True)
 
@@ -88,21 +88,42 @@ def scan(path: str = typer.Argument(..., help="スキャン対象のファイル
         session.add(run)
         session.flush()
 
+        batch = ScanBatch(
+            run_id=run.id,
+            batch_type=target_type,
+            status="running",
+            started_at=datetime.now(),
+        )
+        session.add(batch)
+        session.flush()
+
         typer.echo(f"Scanning {target} ...")
         try:
-            raw_output, exit_code = run_scan(str(target), scan_mode)
+            if target_type == "file":
+                raw_output, exit_code, command_line = run_batch_scan([str(target)])
+            else:
+                raw_output, exit_code = run_scan(str(target), scan_mode)
+                command_line = f"clamscan -r --no-summary {target}"
             run_status = "completed"
+            batch_status = "completed"
         except Exception as e:
             typer.echo(f"Error: {e}", err=True)
             run.status = "failed"
             run.finished_at = datetime.now()
+            batch.status = "failed"
+            batch.finished_at = datetime.now()
             raise typer.Exit(1)
+
+        batch.command_line = command_line
+        batch.status = batch_status
+        batch.finished_at = datetime.now()
 
         entries = parse_output(raw_output)
         result_status = _calc_result_status(entries)
 
         result = ScanResult(
             run_id=run.id,
+            batch_id=batch.id,
             plan_item_id=item.id,
             target_path=str(target),
             target_type=target_type,
@@ -122,6 +143,9 @@ def scan(path: str = typer.Argument(..., help="スキャン対象のファイル
                 raw_line=e["raw_line"],
             ))
 
+        item.execution_status = "completed"
+        item.batch_id = batch.id
+        item.last_run_id = run.id
         run.status = run_status
         run.finished_at = datetime.now()
 
@@ -157,6 +181,7 @@ def collect(base: str = typer.Argument(".", help="収集対象ディレクトリ
                 target_reason=t["target_reason"],
                 selected=True,
                 excluded_by_user=False,
+                execution_status="pending",
             ))
 
         plan_id = plan.id
@@ -192,10 +217,11 @@ def preview(
         typer.echo(f"Created : {plan.created_at}")
         typer.echo(f"Items   : {len(items)}")
         typer.echo("")
-        typer.echo(f"{'#':<4} {'type':<12} {'mode':<10} {'reason':<16} path")
-        typer.echo("-" * 80)
+        typer.echo(f"{'#':<4} {'type':<12} {'mode':<10} {'reason':<16} {'exec_status':<14} path")
+        typer.echo("-" * 90)
         for i, item in enumerate(items, 1):
-            typer.echo(f"{i:<4} {item.target_type:<12} {item.scan_mode:<10} {item.target_reason:<16} {item.target_path}")
+            exec_status = item.execution_status or "pending"
+            typer.echo(f"{i:<4} {item.target_type:<12} {item.scan_mode:<10} {item.target_reason:<16} {exec_status:<14} {item.target_path}")
 
 
 @app.command()
@@ -221,9 +247,14 @@ def execute(plan_id: int = typer.Option(..., "--plan-id", help="実行するプ�
             typer.echo(f"Error: plan_id={plan_id} が見つかりません", err=True)
             raise typer.Exit(1)
 
-        if plan.status != "approved":
+        if plan.status not in ("approved", "executing"):
             typer.echo(f"Error: plan_id={plan_id} は approved 状態ではありません（現在: {plan.status}）", err=True)
             raise typer.Exit(1)
+
+        pending_items = get_pending_plan_items(session, plan_id)
+        if not pending_items:
+            typer.echo("すべて完了済みです。")
+            return
 
         raw_items = [
             {
@@ -232,41 +263,142 @@ def execute(plan_id: int = typer.Option(..., "--plan-id", help="実行するプ�
                 "target_type": item.target_type,
                 "scan_mode": item.scan_mode,
             }
-            for item in get_plan_items(session, plan_id)
+            for item in pending_items
         ]
         plan.status = "executing"
 
-    typer.echo(f"Executing plan {plan_id} ({len(raw_items)} target(s)) ...")
-
-    all_results = []
-    failed = False
-
-    for item in raw_items:
-        typer.echo(f"  Scanning {item['target_path']} ...")
-        try:
-            raw_output, exit_code = run_scan(item["target_path"], item["scan_mode"])
-        except Exception as e:
-            typer.echo(f"  Error: {e}", err=True)
-            failed = True
-            continue
-
-        entries = parse_output(raw_output)
-        result_status = _calc_result_status(entries)
-        all_results.append((item, raw_output, exit_code, entries, result_status))
-
+    # ScanRun を作成
     with get_session() as session:
         run = ScanRun(
             plan_id=plan_id,
             started_at=datetime.now(),
-            finished_at=datetime.now(),
-            status="completed" if not failed else "failed",
+            status="running",
         )
         session.add(run)
         session.flush()
+        run_id = run.id
 
-        for item, raw_output, exit_code, entries, result_status in all_results:
+    typer.echo(f"Executing plan {plan_id} ({len(raw_items)} target(s)) ...")
+
+    file_items = [i for i in raw_items if i["target_type"] == "file"]
+    dir_items = [i for i in raw_items if i["target_type"] != "file"]
+
+    run_failed = False
+    all_results: list[tuple[dict, str, int, list[dict], str]] = []
+
+    # --- file バッチ（全 file target を1バッチ）---
+    if file_items:
+        file_paths = [i["target_path"] for i in file_items]
+        with get_session() as session:
+            batch = ScanBatch(
+                run_id=run_id,
+                batch_type="file",
+                status="running",
+                started_at=datetime.now(),
+            )
+            session.add(batch)
+            session.flush()
+            batch_id = batch.id
+
+        typer.echo(f"  [file batch] {len(file_paths)} file(s) ...")
+        try:
+            raw_output, exit_code, command_line = run_batch_scan(file_paths)
+            batch_status = "completed"
+        except Exception as e:
+            typer.echo(f"  Error: {e}", err=True)
+            batch_status = "failed"
+            raw_output, exit_code, command_line = "", 1, ""
+            run_failed = True
+
+        entries_all = parse_output(raw_output)
+
+        # 各 file_item に対応するエントリを割り当て
+        entries_by_path: dict[str, list[dict]] = {}
+        for e in entries_all:
+            entries_by_path.setdefault(e["scanned_path"], []).append(e)
+
+        with get_session() as session:
+            batch = session.get(ScanBatch, batch_id)
+            batch.command_line = command_line
+            batch.status = batch_status
+            batch.finished_at = datetime.now()
+
+            for item in file_items:
+                item_entries = entries_by_path.get(item["target_path"], [])
+                result_status = _calc_result_status(item_entries) if item_entries else ("failed" if batch_status == "failed" else "clean")
+                exec_status = "failed" if batch_status == "failed" else "completed"
+
+                result = ScanResult(
+                    run_id=run_id,
+                    batch_id=batch_id,
+                    plan_item_id=item["id"],
+                    target_path=item["target_path"],
+                    target_type=item["target_type"],
+                    result_status=result_status,
+                    raw_output=raw_output,
+                    exit_code=exit_code,
+                )
+                session.add(result)
+                session.flush()
+
+                for e in item_entries:
+                    session.add(ScanResultEntry(
+                        scan_result_id=result.id,
+                        scanned_path=e["scanned_path"],
+                        entry_status=e["entry_status"],
+                        virus_name=e["virus_name"],
+                        raw_line=e["raw_line"],
+                    ))
+
+                plan_item = session.get(PlanItem, item["id"])
+                plan_item.execution_status = exec_status
+                plan_item.batch_id = batch_id
+                plan_item.last_run_id = run_id
+
+                all_results.append((item, raw_output, exit_code, item_entries, result_status))
+
+    # --- directory バッチ（1件ずつ）---
+    for item in dir_items:
+        with get_session() as session:
+            batch = ScanBatch(
+                run_id=run_id,
+                batch_type="directory",
+                status="running",
+                started_at=datetime.now(),
+            )
+            session.add(batch)
+            session.flush()
+            batch_id = batch.id
+
+        typer.echo(f"  [directory] {item['target_path']} ...")
+        try:
+            raw_output, exit_code = run_scan(item["target_path"], item["scan_mode"])
+            command_line = f"clamscan -r --no-summary {item['target_path']}"
+            batch_status = "completed"
+            exec_status = "completed"
+        except Exception as e:
+            typer.echo(f"  Error: {e}", err=True)
+            raw_output, exit_code, command_line = "", 1, ""
+            batch_status = "failed"
+            exec_status = "failed"
+            run_failed = True
+
+        entries = parse_output(raw_output)
+        result_status = _calc_result_status(entries) if entries else ("failed" if exec_status == "failed" else "clean")
+
+        # only-clamav_error → skipped
+        if exec_status == "completed" and entries and all(e["entry_status"] == "clamav_error" for e in entries):
+            exec_status = "skipped"
+
+        with get_session() as session:
+            batch = session.get(ScanBatch, batch_id)
+            batch.command_line = command_line
+            batch.status = batch_status
+            batch.finished_at = datetime.now()
+
             result = ScanResult(
-                run_id=run.id,
+                run_id=run_id,
+                batch_id=batch_id,
                 plan_item_id=item["id"],
                 target_path=item["target_path"],
                 target_type=item["target_type"],
@@ -286,10 +418,24 @@ def execute(plan_id: int = typer.Option(..., "--plan-id", help="実行するプ�
                     raw_line=e["raw_line"],
                 ))
 
-        plan = get_plan_by_id(session, plan_id)
-        plan.status = "completed" if not failed else "failed"
+            plan_item = session.get(PlanItem, item["id"])
+            plan_item.execution_status = exec_status
+            plan_item.batch_id = batch_id
+            plan_item.last_run_id = run_id
 
-    typer.echo(f"\nDone. plan_id={plan_id} status={'completed' if not failed else 'failed'}")
+        all_results.append((item, raw_output, exit_code, entries, result_status))
+
+    # 最終ステータス更新
+    with get_session() as session:
+        run = session.get(ScanRun, run_id)
+        run.finished_at = datetime.now()
+        run.status = "failed" if run_failed else "completed"
+
+        plan = get_plan_by_id(session, plan_id)
+        plan.status = "failed" if run_failed else "completed"
+
+    final_status = "failed" if run_failed else "completed"
+    typer.echo(f"\nDone. plan_id={plan_id} status={final_status}")
     for item, _, _, entries, result_status in all_results:
         typer.echo(f"  [{result_status.upper()}] {item['target_path']}")
         for e in entries:
