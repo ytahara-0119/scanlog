@@ -2,14 +2,17 @@
 
 ## Issue 一覧と状態
 
-| Issue   | タイトル                          | 依存        | 状態    |
-| ------- | --------------------------------- | ----------- | ------- |
-| issue01 | 環境構築（uv / Typer / SQLAlchemy）| なし        | done（PR未） |
-| issue02 | DBモデル定義とリポジトリ基盤       | issue01     | done（PR未） |
-| issue03 | ClamAV実行とパース                 | issue01     | done（PR未） |
-| issue04 | scan コマンド（手動スキャン）      | issue02,03  | done（PR#1） |
-| issue05 | collector 実装（対象抽出ロジック） | issue04     | pending      |
-| issue06 | collect/preview/approve/execute   | issue04,05  | pending      |
+| Issue   | タイトル                                    | 依存             | 状態         |
+| ------- | ------------------------------------------- | ---------------- | ------------ |
+| issue01 | 環境構築（uv / Typer / SQLAlchemy）          | なし             | done（PR未） |
+| issue02 | DBモデル定義とリポジトリ基盤                 | issue01          | done（PR未） |
+| issue03 | ClamAV実行とパース                           | issue01          | done（PR未） |
+| issue04 | scan コマンド（手動スキャン）                | issue02,03       | done（PR#1） |
+| issue05 | collector 実装（対象抽出ロジック）           | issue04          | done（PR#2） |
+| issue06 | collect/preview/approve/execute             | issue04,05       | done（PR#3） |
+| issue07 | DBモデル拡張（scan_batches / カラム追加）    | issue02          | pending      |
+| issue08 | scanner.py バッチ実行対応                   | issue07          | pending      |
+| issue09 | execute バッチ実行・途中再開対応            | issue07, issue08 | pending      |
 
 ---
 
