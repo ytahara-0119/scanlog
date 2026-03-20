@@ -1,25 +1,47 @@
 # docs/workflow.md
 
-## ブランチ命名
-- feature/issueXX-<short-name>
-
 ## 基本フロー
-1. 監督が issue を作成する
-2. issue ごとに branch を切る
-3. 作業エージェントが issue を実装する
-4. 完了したら内容を報告する
-5. 監督が完了判定する
+
+1. 人間が Supervisor に指示する
+2. Supervisor が issue を作成する
+3. issue ごとに branch を定義する
+4. Implementer が実装する
+5. 完了後、人間確認で停止
+6. 承認後、次の issue に進む
+
+---
+
+## ブランチ命名
+
+feature/issueXX-<short-name>
+
+---
 
 ## issue 分割ルール
-- 1 issue = 1つの小さな責務
-- 原則として主要変更ファイルは 1〜2個まで
-- 変更範囲が広い場合は再分割する
+
+- 1 issue = 1責務
+- 原則 1〜2ファイルのみ変更
+- 横断変更は禁止
+
+---
 
 ## 競合回避ルール
-- 同じ主要ファイルを複数 issue で編集しない
-- 横断的変更は最後の統合 issue に寄せる
 
-## MVP優先ルール
-- まず scan コマンドを完成させる
-- collect / execute は後続
-- 除外や quarantine は後回し
+- 同一ファイルを複数 issue で編集しない
+- 共通変更は最後にまとめる
+
+---
+
+## MVP優先
+
+- scan（manual）を最優先
+- collect / execute は後回し
+- 除外・最適化は後回し
+
+---
+
+## 人間の役割
+
+- issue 完了時の確認のみ行う
+- 設計の方向修正を行う
+- バグ・仕様ズレの最終判断を行う
