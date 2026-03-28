@@ -574,18 +574,21 @@ collect → preview → approve → execute
 ```
 watch run
   1. watch_paths から enabled = true の path を取得
+     - 0件の場合: 「監視対象が登録されていません」を表示して終了
   2. 各 watch_path 配下のファイルを走査（除外ポリシー適用）
   3. file_inventory と比較し、差分ありファイルを特定
      a. 新規ファイル → スキャン対象
      b. size / mtime 変化 → sha256 を計算 → 変化があればスキャン対象
      c. 前回 error (last_scan_result = error) → スキャン対象
      d. 変化なし → スキップ
-  4. スキャン対象が0件の場合: スキャン不要として正常終了
+  4. スキャン対象が0件の場合: 「変更ファイルなし」を表示してスキャンをスキップ
+     ※ スキャンはスキップするが、step 6 の file_inventory 更新は必ず実行する
+       （last_seen_at の更新・削除ファイルの is_deleted=true マーキングのため）
   5. スキャン対象が1件以上の場合:
      a. scan_plan 作成（mode = watch_scan / approved）
      b. plan_items 作成（target_reason = watch_diff）
      c. execute と同じバッチ処理を実行
-  6. 完了後: file_inventory を更新
+  6. file_inventory を更新（スキャン有無に関わらず実行）
      - 全走査ファイルの last_seen_at を更新
      - スキャン済みファイルの sha256 / last_scanned_at / last_scan_result を更新
      - 走査で見つからなかったファイルは is_deleted = true に更新
