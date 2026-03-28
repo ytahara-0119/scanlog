@@ -19,6 +19,19 @@ from sqlalchemy.orm import Session
 from scanlog.models import FileInventory, WatchPath
 from scanlog.repository import get_inventory_by_path, mark_deleted_inventory
 
+# 定期監視（watch run）でデフォルトに除外するディレクトリ名。
+# これは「安全だから除外する」のではなく「監視コスト削減のためのポリシー」である。
+# 手動スキャン（scan コマンド）にはこの除外は適用しない。
+DEFAULT_EXCLUDE_DIRS: set[str] = {
+    "node_modules",
+    ".venv",
+    "vendor",
+    "target",
+    "build",
+    "dist",
+    ".git",
+}
+
 
 def scan_directory(base_path: str, exclude_dirs: set[str]) -> list[Path]:
     """base_path 配下のファイルを再帰的に走査する。
