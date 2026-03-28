@@ -109,3 +109,37 @@ def get_pending_plan_items(session: Session, plan_id: int) -> list[PlanItem]:
         )
         .all()
     )
+
+
+# --- watch_paths CRUD ---
+
+def get_watch_path_by_path(session: Session, path: str) -> WatchPath | None:
+    return session.query(WatchPath).filter(WatchPath.path == path).first()
+
+
+def add_watch_path(session: Session, path: str) -> WatchPath:
+    """path を監視対象として登録する。既存レコードがある場合は enabled = True に更新する。"""
+    from datetime import datetime
+    existing = get_watch_path_by_path(session, path)
+    if existing:
+        existing.enabled = True
+        existing.updated_at = datetime.now()
+        return existing
+    wp = WatchPath(path=path, enabled=True, created_at=datetime.now(), updated_at=datetime.now())
+    session.add(wp)
+    return wp
+
+
+def list_watch_paths(session: Session) -> list[WatchPath]:
+    return session.query(WatchPath).order_by(WatchPath.id).all()
+
+
+def remove_watch_path(session: Session, path: str) -> bool:
+    """path を watch_paths から削除する。削除成功で True、未登録で False を返す。
+    file_inventory のレコードは保持する（履歴として残す）。
+    """
+    wp = get_watch_path_by_path(session, path)
+    if wp is None:
+        return False
+    session.delete(wp)
+    return True

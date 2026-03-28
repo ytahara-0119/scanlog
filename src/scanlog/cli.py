@@ -7,10 +7,22 @@ import typer
 from scanlog.collector import collect as do_collect
 from scanlog.models import PlanItem, ScanBatch, ScanPlan, ScanResult, ScanResultEntry, ScanRun
 from scanlog.parser import parse_output
-from scanlog.repository import get_latest_plan, get_pending_plan_items, get_plan_by_id, get_plan_items, get_session, init_db
+from scanlog.repository import (
+    add_watch_path,
+    get_latest_plan,
+    get_pending_plan_items,
+    get_plan_by_id,
+    get_plan_items,
+    get_session,
+    init_db,
+    list_watch_paths,
+    remove_watch_path,
+)
 from scanlog.scanner import run_batch_scan, run_scan
 
 app = typer.Typer(invoke_without_command=True)
+watch_app = typer.Typer(help="監視対象 path の管理コマンド")
+app.add_typer(watch_app, name="watch")
 
 
 def _calc_result_status(entries: list[dict]) -> str:
@@ -444,6 +456,45 @@ def execute(plan_id: int = typer.Option(..., "--plan-id", help="実行するプ�
         clamav_errors = [e for e in entries if e["entry_status"] == "clamav_error"]
         if clamav_errors:
             typer.echo(f"    {len(clamav_errors)} file(s) skipped (could not be accessed by ClamAV).")
+
+
+@watch_app.command("add")
+def watch_add(path: str = typer.Argument(..., help="監視対象のディレクトリまたはファイルパス")) -> None:
+    """監視対象 path を登録する"""
+    resolved = str(Path(path).resolve())
+    with get_session() as session:
+        wp = add_watch_path(session, resolved)
+        session.flush()
+        wp_id = wp.id
+    typer.echo(f"Added: [{wp_id}] {resolved}")
+
+
+@watch_app.command("list")
+def watch_list() -> None:
+    """登録済みの監視対象 path を一覧表示する"""
+    with get_session() as session:
+        paths = list_watch_paths(session)
+        if not paths:
+            typer.echo("登録された監視対象はありません")
+            return
+        typer.echo(f"{'ID':<4} {'enabled':<8} {'created_at':<22} path")
+        typer.echo("-" * 80)
+        for wp in paths:
+            enabled_str = "yes" if wp.enabled else "no"
+            created = str(wp.created_at)[:19] if wp.created_at else "-"
+            typer.echo(f"{wp.id:<4} {enabled_str:<8} {created:<22} {wp.path}")
+
+
+@watch_app.command("remove")
+def watch_remove(path: str = typer.Argument(..., help="削除する監視対象パス")) -> None:
+    """監視対象 path を登録から削除する"""
+    resolved = str(Path(path).resolve())
+    with get_session() as session:
+        removed = remove_watch_path(session, resolved)
+    if not removed:
+        typer.echo(f"Error: {resolved} は登録されていません", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Removed: {resolved}")
 
 
 if __name__ == "__main__":
