@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from scanlog.config import DB_PATH, ensure_dirs
-from scanlog.models import Base, PlanItem, ScanBatch, ScanPlan
+from scanlog.models import Base, FileInventory, PlanItem, ScanBatch, ScanPlan, WatchPath
 
 
 def _get_engine():
@@ -22,7 +22,7 @@ def migrate_db() -> None:
     """既存 DB に不足カラム・テーブルを追加する（冪等）。"""
     engine = _get_engine()
     with engine.connect() as conn:
-        # scan_batches は create_all で作成済みのはずだが念のため確認
+        # plan_items カラム追加
         existing_cols = _existing_columns(conn, "plan_items")
         additions = {
             "batch_id":         "ALTER TABLE plan_items ADD COLUMN batch_id INTEGER",
@@ -33,9 +33,38 @@ def migrate_db() -> None:
             if col not in existing_cols:
                 conn.execute(text(stmt))
 
+        # scan_results カラム追加
         existing_cols = _existing_columns(conn, "scan_results")
         if "batch_id" not in existing_cols:
             conn.execute(text("ALTER TABLE scan_results ADD COLUMN batch_id INTEGER"))
+
+        # watch_paths テーブル追加（監視機能）
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS watch_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                enabled BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+        """))
+
+        # file_inventory テーブル追加（監視差分判定の基準データ）
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS file_inventory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                watch_path_id INTEGER REFERENCES watch_paths(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_size INTEGER,
+                mtime REAL,
+                sha256 TEXT,
+                first_seen_at DATETIME,
+                last_seen_at DATETIME,
+                last_scanned_at DATETIME,
+                last_scan_result TEXT,
+                is_deleted BOOLEAN NOT NULL DEFAULT 0
+            )
+        """))
 
         conn.commit()
 
