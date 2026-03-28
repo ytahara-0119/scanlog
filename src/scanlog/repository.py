@@ -143,3 +143,33 @@ def remove_watch_path(session: Session, path: str) -> bool:
         return False
     session.delete(wp)
     return True
+
+
+# --- file_inventory CRUD ---
+
+def get_inventory_by_path(session: Session, file_path: str) -> FileInventory | None:
+    return session.query(FileInventory).filter(FileInventory.file_path == file_path).first()
+
+
+def upsert_inventory(session: Session, data: dict) -> FileInventory:
+    """file_path をキーに INSERT or UPDATE する。"""
+    inv = get_inventory_by_path(session, data["file_path"])
+    if inv is None:
+        inv = FileInventory(**data)
+        session.add(inv)
+    else:
+        for key, value in data.items():
+            setattr(inv, key, value)
+    return inv
+
+
+def mark_deleted_inventory(session: Session, watch_path_id: int, existing_paths: set[str]) -> None:
+    """existing_paths に含まれないファイルを is_deleted = True に更新する。"""
+    records = (
+        session.query(FileInventory)
+        .filter(FileInventory.watch_path_id == watch_path_id, FileInventory.is_deleted == False)  # noqa: E712
+        .all()
+    )
+    for inv in records:
+        if inv.file_path not in existing_paths:
+            inv.is_deleted = True
