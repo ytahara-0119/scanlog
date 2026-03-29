@@ -18,7 +18,7 @@ from scanlog.repository import (
     list_watch_paths,
     remove_watch_path,
 )
-from scanlog.scanner import run_batch_scan, run_scan
+from scanlog.scanner import _BATCH_CHUNK_SIZE, iter_batch_scan, run_batch_scan, run_scan
 from scanlog.watcher import DEFAULT_EXCLUDE_DIRS, detect_changes, scan_directory, update_inventory
 
 app = typer.Typer(invoke_without_command=True)
@@ -86,61 +86,92 @@ def _run_execute(plan_id: int) -> tuple[bool, list]:
     run_failed = False
     all_results: list[tuple[dict, str, int, list[dict], str]] = []
 
-    # --- file バッチ（全 file target を1バッチ）---
+    # --- file バッチ（チャンクごとに DB 書き込み・進捗表示）---
     if file_items:
         file_paths = [i["target_path"] for i in file_items]
+        items_by_path = {i["target_path"]: i for i in file_items}
+        total = len(file_paths)
+        n_chunks = max(1, (total + _BATCH_CHUNK_SIZE - 1) // _BATCH_CHUNK_SIZE)
+        command_line = f"clamscan --no-summary [{total} files in {n_chunks} chunks]"
+
         with get_session() as session:
             batch = ScanBatch(run_id=run_id, batch_type="file", status="running", started_at=datetime.now())
             session.add(batch)
             session.flush()
             batch_id = batch.id
 
-        typer.echo(f"  [file batch] {len(file_paths)} file(s) ...")
+        done = 0
+        max_exit_code = 0
+        batch_status = "completed"
+
         try:
-            raw_output, exit_code, command_line = run_batch_scan(file_paths)
-            batch_status = "completed"
+            for chunk_stdout, chunk_exit_code, chunk_paths in iter_batch_scan(file_paths):
+                chunk_entries_all = parse_output(chunk_stdout)
+                entries_by_path: dict[str, list[dict]] = {}
+                for e in chunk_entries_all:
+                    entries_by_path.setdefault(e["scanned_path"], []).append(e)
+
+                max_exit_code = max(max_exit_code, chunk_exit_code)
+                done += len(chunk_paths)
+                pct = done / total * 100
+                print(f"\r  [{done}/{total}] {pct:.1f}%...", end="", flush=True)
+
+                with get_session() as session:
+                    for path in chunk_paths:
+                        item = items_by_path[path]
+                        item_entries = entries_by_path.get(path, [])
+                        result_status = _calc_result_status(item_entries) if item_entries else "clean"
+
+                        result = ScanResult(
+                            run_id=run_id, batch_id=batch_id, plan_item_id=item["id"],
+                            target_path=path, target_type=item["target_type"],
+                            result_status=result_status, raw_output=chunk_stdout, exit_code=chunk_exit_code,
+                        )
+                        session.add(result)
+                        session.flush()
+                        for e in item_entries:
+                            session.add(ScanResultEntry(
+                                scan_result_id=result.id, scanned_path=e["scanned_path"],
+                                entry_status=e["entry_status"], virus_name=e["virus_name"], raw_line=e["raw_line"],
+                            ))
+                        plan_item = session.get(PlanItem, item["id"])
+                        plan_item.execution_status = "completed"
+                        plan_item.batch_id = batch_id
+                        plan_item.last_run_id = run_id
+
+                        all_results.append((item, chunk_stdout, chunk_exit_code, item_entries, result_status))
+
+            print()  # 進捗行の改行
+
         except Exception as e:
+            print()
             typer.echo(f"  Error: {e}", err=True)
             batch_status = "failed"
-            raw_output, exit_code, command_line = "", 1, ""
             run_failed = True
 
-        entries_all = parse_output(raw_output)
-        entries_by_path: dict[str, list[dict]] = {}
-        for e in entries_all:
-            entries_by_path.setdefault(e["scanned_path"], []).append(e)
+            # 未処理ファイルを error としてマーク
+            processed = {r[0]["target_path"] for r in all_results}
+            remaining = [i for i in file_items if i["target_path"] not in processed]
+            with get_session() as session:
+                for item in remaining:
+                    result = ScanResult(
+                        run_id=run_id, batch_id=batch_id, plan_item_id=item["id"],
+                        target_path=item["target_path"], target_type=item["target_type"],
+                        result_status="error", raw_output="", exit_code=1,
+                    )
+                    session.add(result)
+                    session.flush()
+                    plan_item = session.get(PlanItem, item["id"])
+                    plan_item.execution_status = "failed"
+                    plan_item.batch_id = batch_id
+                    plan_item.last_run_id = run_id
+                    all_results.append((item, "", 1, [], "error"))
 
         with get_session() as session:
             batch = session.get(ScanBatch, batch_id)
             batch.command_line = command_line
             batch.status = batch_status
             batch.finished_at = datetime.now()
-
-            for item in file_items:
-                item_entries = entries_by_path.get(item["target_path"], [])
-                result_status = _calc_result_status(item_entries) if item_entries else ("error" if batch_status == "failed" else "clean")
-                exec_status = "failed" if batch_status == "failed" else "completed"
-
-                result = ScanResult(
-                    run_id=run_id, batch_id=batch_id, plan_item_id=item["id"],
-                    target_path=item["target_path"], target_type=item["target_type"],
-                    result_status=result_status, raw_output=raw_output, exit_code=exit_code,
-                )
-                session.add(result)
-                session.flush()
-
-                for e in item_entries:
-                    session.add(ScanResultEntry(
-                        scan_result_id=result.id, scanned_path=e["scanned_path"],
-                        entry_status=e["entry_status"], virus_name=e["virus_name"], raw_line=e["raw_line"],
-                    ))
-
-                plan_item = session.get(PlanItem, item["id"])
-                plan_item.execution_status = exec_status
-                plan_item.batch_id = batch_id
-                plan_item.last_run_id = run_id
-
-                all_results.append((item, raw_output, exit_code, item_entries, result_status))
 
     # --- directory バッチ（1件ずつ）---
     for item in dir_items:

@@ -23,6 +23,19 @@ def run_scan(target_path: str, scan_mode: str) -> tuple[str, int]:
 _BATCH_CHUNK_SIZE = 500
 
 
+def iter_batch_scan(file_paths: list[str]):
+    """チャンクごとに (stdout, exit_code, chunk_paths) を yield する。"""
+    if not file_paths:
+        return
+    if shutil.which("clamscan") is None:
+        raise RuntimeError("clamscan not found. Please install ClamAV.")
+    base_cmd = ["clamscan", "--no-summary"]
+    for i in range(0, len(file_paths), _BATCH_CHUNK_SIZE):
+        chunk = file_paths[i : i + _BATCH_CHUNK_SIZE]
+        result = subprocess.run(base_cmd + chunk, capture_output=True, text=True, timeout=600)
+        yield result.stdout, result.returncode, chunk
+
+
 def run_batch_scan(file_paths: list[str]) -> tuple[str, int, str]:
     """複数の file target をまとめて clamscan で実行する。
 
@@ -35,30 +48,14 @@ def run_batch_scan(file_paths: list[str]) -> tuple[str, int, str]:
     if not file_paths:
         return "", 0, ""
 
-    if shutil.which("clamscan") is None:
-        raise RuntimeError("clamscan not found. Please install ClamAV.")
+    n_chunks = max(1, (len(file_paths) + _BATCH_CHUNK_SIZE - 1) // _BATCH_CHUNK_SIZE)
+    command_line = f"clamscan --no-summary [{len(file_paths)} files in {n_chunks} chunks]"
 
     outputs: list[str] = []
     max_exit_code = 0
-    base_cmd = ["clamscan", "--no-summary"]
-
-    chunks = [
-        file_paths[i:i + _BATCH_CHUNK_SIZE]
-        for i in range(0, len(file_paths), _BATCH_CHUNK_SIZE)
-    ]
-    command_line = " ".join(base_cmd + [f"[{len(file_paths)} files in {len(chunks)} chunks]"])
-
-    for chunk in chunks:
-        cmd = base_cmd + chunk
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if result.stdout:
-            outputs.append(result.stdout)
-        if result.returncode > max_exit_code:
-            max_exit_code = result.returncode
+    for stdout, exit_code, _ in iter_batch_scan(file_paths):
+        if stdout:
+            outputs.append(stdout)
+        max_exit_code = max(max_exit_code, exit_code)
 
     return "\n".join(outputs), max_exit_code, command_line
