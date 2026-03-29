@@ -118,7 +118,7 @@ def _run_execute(plan_id: int) -> tuple[bool, list]:
 
             for item in file_items:
                 item_entries = entries_by_path.get(item["target_path"], [])
-                result_status = _calc_result_status(item_entries) if item_entries else ("failed" if batch_status == "failed" else "clean")
+                result_status = _calc_result_status(item_entries) if item_entries else ("error" if batch_status == "failed" else "clean")
                 exec_status = "failed" if batch_status == "failed" else "completed"
 
                 result = ScanResult(
