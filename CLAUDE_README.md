@@ -72,16 +72,16 @@ Human は Supervisor にのみ指示を出す。Supervisor が Implementer を�
 Claude Code がプロジェクトのルートに置かれた `CLAUDE.md` を自動的に読み込みます。
 ここにエージェントの運用ルール・禁止事項・フローを記述します。
 
-- **プロジェクト固有の箇所**: プロジェクト概要・技術スタック・実装優先順位（`# [要差し替え]` でマーク済み）
-- **汎用箇所**: Supervisor/Implementer の責務・並列実行ルール・ブランチ運用ルール
+- **プロジェクト固有の箇所（Human が差し替える）**: プロジェクト概要・技術スタック・実装優先順位（`[要差し替え]` でマーク済み）
+- **汎用箇所（差し替え不要）**: Supervisor/Implementer の責務・並列実行ルール・ブランチ運用ルール
 
 #### `agents/supervisor.md`
 
 Supervisor 役の Claude に渡す指示書です。
 「どの issue を並列化できるか判断し、Implementer を起動する」という判断ロジックが書かれています。
 
-- **プロジェクト固有の箇所**: 設計ルール（`# [要差し替え]` でマーク済み）
-- **汎用箇所**: issue 分割ルール・並列実行フロー・禁止事項
+- **プロジェクト固有の箇所（Human が差し替える）**: 設計ルール（`[要差し替え]` でマーク済み）
+- **汎用箇所（差し替え不要）**: issue 分割ルール・並列実行フロー・禁止事項
 
 #### `agents/implementer.md`
 
@@ -142,9 +142,11 @@ scripts/workflow-status.sh
 .claude/hooks/pre-pr-check.sh
 ```
 
-### Step 2: プロジェクト固有箇所を差し替える
+### Step 2: プロジェクト固有箇所を差し替える（Human が実施）
 
-`CLAUDE.md` の `# [要差し替え]` でマークされた箇所を編集します:
+**担当: Human**（Supervisor や Implementer は実施しない）
+
+`CLAUDE.md` の `[要差し替え]` でマークされた箇所を編集します:
 
 1. **`## プロジェクト概要`** — プロジェクト名・概要・仕様書ファイル名を書く
 2. **`## 開発方針`** — 使用する言語・フレームワーク・DB・ツールを書く
@@ -152,12 +154,15 @@ scripts/workflow-status.sh
 
 `agents/supervisor.md` の `## 設計ルール` — プロジェクト固有のアーキテクチャ制約を書く。
 
-### Step 3: 仕様書を用意する
+> **なぜ Human が行うか**: ここに書く内容はプロジェクトの技術的方向性そのものであり、
+> 人間が意思決定して確定させるべき情報です。Supervisor はこの設定を前提として動きます。
+
+### Step 3: 仕様書を用意する（Human が実施）
 
 `SPEC.md`（または任意のファイル名）に仕様を記述します。
 Supervisor はこれを読んで issue を作成します。
 
-### Step 4: `.claude/settings.json` を確認する
+### Step 4: `.claude/settings.json` を確認する（Human が実施）
 
 `permissions.allow` に、このプロジェクトで使うコマンドが含まれているか確認します:
 
