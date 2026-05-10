@@ -32,7 +32,7 @@
 このプロジェクトは以下の構成で進める：
 
 - Supervisor（監督）
-- Implementer（作業エージェント 1〜2）
+- Implementer（作業エージェント、並列起動可）
 
 人間は Supervisor にのみ指示を出す。
 
@@ -43,10 +43,10 @@
 - SPEC.md を読み、MVPを達成するための issue を分割する
 - issueごとの依存関係を整理する
 - 各 issue に対して branch 名、編集対象、完了条件を定義する
-- 実装順を決定する
-- Implementer に issue を委譲する
+- `bash scripts/parallel-check.sh` で並列実行可能なグループを特定する
+- グループ内の issue を **同時に** 複数 Implementer に委譲する（worktree 並列）
 - issue 完了後に必ず人間確認で停止する
-- 人間の承認後に次の issue に進む
+- 人間の承認後に次のグループに進む
 - 最終的に進捗レポートを作成する
 
 ---
@@ -58,7 +58,7 @@
 - MVPに必要な最小実装を行う
 - 完了条件を満たす
 - 実装内容を簡潔に報告する
-- **PR 作成前に issue の Acceptance Criteria と Test Plan を全項目実行・確認する**
+- **PR 作成前に issue の Acceptance Criteria と Definition of Done を全項目実行・確認する**
 - 実装完了後に必ず Pull Request を作成する
 
 ---
@@ -71,24 +71,41 @@ Supervisor は以下の流れで進行すること：
 2. issue を 5〜7 個に分割する
 3. issues/issueXX.md を作成する
 4. docs/workflow.md を必要に応じて更新する
-5. 依存関係に従って最初の issue を選択する
-6. Implementer に実装を委譲する
+5. `bash scripts/parallel-check.sh` で並列化可能グループを確認する
+6. グループ内の issue を並列 Implementer に委譲する（→ 並列実行ルール参照）
 7. 完了後、必ず停止して人間確認を求める
-8. 承認後、次の issue に進む
+8. 承認後、次のグループに進む
+
+## 並列実行ルール（重要）
+
+Supervisor が Implementer を並列起動する際のルール：
+
+- **並列化の条件**：依存 issue がすべて main にマージ済み、かつ Editable Files が重複しない
+- **起動方法**：単一メッセージ内で複数の `Agent(isolation: "worktree")` を同時に呼び出す
+- **各 Implementer** は独立した git worktree で作業するためファイル競合が発生しない
+- **グループ完了後**：全 PR がマージされてから次のグループを起動する
+- **SQLite テスト**：各 worktree で独立した DB ファイルを使う（例: `TEST_DB=./test.db uv run scanlog scan ...`）
+
+```
+# 並列起動の例（Supervisor がこの形で Agent を呼び出す）
+Agent(isolation="worktree", prompt="issues/issue02.md を実装")   ┐ 同時
+Agent(isolation="worktree", prompt="issues/issue03.md を実装")   ┘ 起動
+```
 
 ## ブランチ運用ルール（重要）
 
 - **ブランチは必ず最新の main から作成する**
 - 依存 issue が複数ある場合は、それらを main にマージ済みであることを確認してから着手する
-- **PR 作成前に Test Plan を全項目実行し、結果を確認する**
+- **PR 作成前に Acceptance Criteria / Definition of Done を全項目確認する**（フックが自動チェック）
 - issue 実装完了後は必ず Pull Request を作成する
-- PR マージ後に main を更新してから次の issue に進む
+- PR マージ後に main を更新してから次のグループに進む
 
 ---
 
 ## 禁止事項
 
-- 複数 issue で同一ファイルを同時に編集させること
+- Editable Files が重複する issue を同時に並列実行させること
+- 依存 issue が未マージのまま Implementer を起動すること
 - MVP外の機能を先に実装すること
 - issue を曖昧なまま作成すること
 - 人間確認なしで連続実行すること

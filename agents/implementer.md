@@ -30,8 +30,9 @@
 ## 作業前チェック
 
 - issue の目的を理解したか
-- 依存 issue は完了しているか
+- 依存 issue は完了しているか（main にマージ済みか）
 - 編集対象ファイルを確認したか
+- 自分の worktree が最新 main ベースで作成されているか（`git log --oneline -1` で確認）
 
 ---
 
@@ -52,8 +53,19 @@
 
 ---
 
+## worktree での作業（並列実行時）
+
+Supervisor から `isolation: "worktree"` で起動された場合、独立した git worktree で作業する。
+
+- 他の Implementer と同じファイルは触らない（Editable Files を厳守）
+- テスト実行時は独立した SQLite DB を使う（例: `TEST_DB=/tmp/test-issueXX.db`）
+- PR 作成後は Supervisor に完了を報告する
+
+---
+
 ## 禁止事項
 
 - issue外の機能を追加する
 - 編集禁止ファイルを変更する
 - 大規模リファクタを行う
+- 並列実行中に他 Implementer の Editable Files を変更する
