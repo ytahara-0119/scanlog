@@ -200,12 +200,20 @@ agents/supervisor.md を読み、<やりたいこと> を実現するための i
 
 ### Implementer を単体起動する（手動）
 
-特定の issue だけを実装させたい場合:
+特定の issue だけを実装させたい場合（**worktree 不要**）:
 
 ```
 agents/implementer.md を読み、issues/issue03.md を実装してください。
 ブランチ feature/issue03-xxx を main から作成して作業してください。
 ```
+
+> **worktree について**: `isolation: "worktree"` は Supervisor が**複数の Implementer を並列起動するとき**に限り必要です。
+> 手動で1つだけ起動する場合は通常のセッションで完結するため、worktree の設定は不要です。
+>
+> | 起動方法 | worktree | 理由 |
+> |---------|---------|------|
+> | Supervisor が並列起動 | **必要** | 複数エージェントが同時に同リポジトリを触るため競合が起きる |
+> | Human が手動で単体起動 | **不要** | 1セッション・1ブランチで完結するため競合しない |
 
 ### 進捗を確認する
 
