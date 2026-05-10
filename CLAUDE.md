@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 ## プロジェクト概要
+<!-- [要差し替え: Human が実施] プロジェクト名・概要・仕様書ファイル名をここに記述する -->
 本プロジェクトは ClamAV を利用した Python CLI スキャンツールである。
 仕様の正本は SPEC.md とする。
 
@@ -18,6 +19,7 @@
 ---
 
 ## 開発方針
+<!-- [要差し替え: Human が実施] 使用言語・フレームワーク・DB・ツールをプロジェクトに合わせて書き換える -->
 
 - Python は uv で管理する
 - DB は SQLite を使用する
@@ -113,6 +115,7 @@ Agent(isolation="worktree", prompt="issues/issue03.md を実装")   ┘ 起動
 ---
 
 ## 実装優先順位
+<!-- [要差し替え: Human が実施] このプロジェクト固有の実装順序に書き換える -->
 
 1. 環境構築（uv / SQLite / Typer / SQLAlchemy）
 2. scan（manual）
