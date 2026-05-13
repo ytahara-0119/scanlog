@@ -8,62 +8,12 @@ class Base(DeclarativeBase):
     pass
 
 
-class ScanPlan(Base):
-    __tablename__ = "scan_plans"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    mode: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str | None] = mapped_column(Text, nullable=True)
-    base_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class PlanItem(Base):
-    __tablename__ = "plan_items"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    plan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_plans.id"), nullable=True)
-    target_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    target_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    scan_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
-    target_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    selected: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    excluded_by_user: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    exclude_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    batch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_batches.id"), nullable=True)
-    execution_status: Mapped[str | None] = mapped_column(Text, nullable=True, default="pending")
-    last_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_runs.id"), nullable=True)
-
-
-class ScanRun(Base):
-    __tablename__ = "scan_runs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    plan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_plans.id"), nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class ScanBatch(Base):
-    __tablename__ = "scan_batches"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_runs.id"), nullable=True)
-    batch_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    command_line: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str | None] = mapped_column(Text, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
 class ScanResult(Base):
     __tablename__ = "scan_results"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_runs.id"), nullable=True)
-    batch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("scan_batches.id"), nullable=True)
-    plan_item_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("plan_items.id"), nullable=True)
+    mode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     target_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_status: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -83,10 +33,6 @@ class ScanResultEntry(Base):
 
 
 class WatchPath(Base):
-    """監視対象 path の登録テーブル。
-    mode: watch_scan の scan_plan と連携して使用する。
-    """
-
     __tablename__ = "watch_paths"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -113,7 +59,5 @@ class FileInventory(Base):
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # 値: clean / infected / error / null（未スキャン）
     last_scan_result: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # ファイルが走査で見つからない場合 True（論理削除）
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
