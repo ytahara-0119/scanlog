@@ -1,7 +1,7 @@
 # scanlog
 
 ClamAV を利用したファイル/ディレクトリのウィルススキャン CLI ツール。
-スキャン結果を SQLite に保存し、定期スキャンフローにも対応する。
+スキャン結果を SQLite に保存し、監視対象の差分スキャンに対応する。
 
 ---
 
@@ -33,10 +33,6 @@ uv sync
 uv run scanlog scan <path>
 ```
 
-| 引数 | 説明 |
-|---|---|
-| `<path>` | スキャン対象のファイルまたはディレクトリ |
-
 **例**
 
 ```bash
@@ -49,103 +45,114 @@ uv run scanlog scan ~/projects/myapp
 
 ---
 
-### `collect` — 対象収集
+### `recent` — 直近のスキャン結果表示
 
-カレントディレクトリ配下の当日作成/更新ファイルを収集し、スキャンプランを作成する。
+直近のスキャン結果を新しい順に表示する（デフォルト: 10件）。
 
 ```bash
-uv run scanlog collect [dir]
+uv run scanlog recent [--limit N]
 ```
 
-| 引数 | 説明 | デフォルト |
+| オプション | 説明 | デフォルト |
 |---|---|---|
-| `[dir]` | 収集対象ディレクトリ | `.`（カレントディレクトリ） |
+| `--limit N` | 表示件数 | `10` |
 
 **例**
 
 ```bash
-# カレントディレクトリを対象に収集
-uv run scanlog collect
+# 直近10件を表示
+uv run scanlog recent
 
-# 指定ディレクトリを対象に収集
-uv run scanlog collect ~/Downloads
+# 直近3件を表示
+uv run scanlog recent --limit 3
 ```
 
-実行すると `plan_id` が表示される。
+**出力例**
+
+```
+#    scanned_at             mode     status     target_path
+--------------------------------------------------------------------------------
+1    2026-05-13 08:00:01    watch    clean      /Users/foo/bar/baz.txt
+2    2026-05-13 07:59:58    watch    clean      /Users/foo/qux.py
+3    2026-05-12 14:32:11    manual   infected   /Users/foo/evil.dmg
+     -> Eicar-Test-Signature (/Users/foo/evil.dmg)
+```
 
 ---
 
-### `preview` — プラン確認
+### `watch` — 監視対象の管理と巡回スキャン
 
-作成済みスキャンプランの内容を表示する。
+監視対象ディレクトリを登録し、差分のあるファイルだけをスキャンする。
+cron などから定期実行することを想定している。
+
+#### `watch add` — 監視対象を登録
 
 ```bash
-uv run scanlog preview --latest
-uv run scanlog preview --plan-id <id>
+uv run scanlog watch add <path>
 ```
 
-| オプション | 説明 |
-|---|---|
-| `--latest` | 最新のプランを表示 |
-| `--plan-id <id>` | 指定した ID のプランを表示 |
+#### `watch list` — 監視対象を一覧表示
+
+```bash
+uv run scanlog watch list
+```
+
+#### `watch remove` — 監視対象を削除
+
+```bash
+uv run scanlog watch remove <path>
+```
+
+#### `watch run` — 差分スキャンを実行
+
+登録済みの全監視対象を対象に差分チェックを行い、変化のあったファイルのみスキャンする。
+
+```bash
+uv run scanlog watch run
+```
+
+- 前回から変化のないファイルはスキップする（size + mtime → sha256 で判定）
+- `node_modules` / `.venv` / `.git` 等の重い依存ディレクトリはデフォルトで除外する
 
 **例**
 
 ```bash
-uv run scanlog preview --latest
-uv run scanlog preview --plan-id 3
+# 監視対象を登録
+uv run scanlog watch add ~/Downloads
+uv run scanlog watch add ~/ghq
+
+# 一覧確認
+uv run scanlog watch list
+
+# 差分スキャン実行（cron に登録するコマンド）
+uv run scanlog watch run
 ```
 
 ---
 
-### `approve` — プラン承認
+## 典型的な使い方
 
-スキャンプランを承認する（`execute` を実行するために必要）。
+### 単発スキャン
 
 ```bash
-uv run scanlog approve --plan-id <id>
+uv run scanlog scan ~/Downloads/suspicious_file.dmg
 ```
 
-**例**
+### 定期監視（cron）
 
 ```bash
-uv run scanlog approve --plan-id 3
+# crontab -e で登録する例（毎日 8:00 に実行）
+0 8 * * * cd /path/to/scanlog && uv run scanlog watch run >> ~/.scanlog/watch.log 2>&1
 ```
 
----
-
-### `execute` — スキャン実行
-
-承認済みプランのスキャンを実行し、結果を DB に保存する。
+### 結果確認
 
 ```bash
-uv run scanlog execute --plan-id <id>
-```
+# CLI で確認
+uv run scanlog recent
 
-> `approve` 済みのプランのみ実行可能。
-
-**例**
-
-```bash
-uv run scanlog execute --plan-id 3
-```
-
----
-
-## 定期スキャンフロー
-
-```bash
-# 1. 当日更新ファイルを収集してプランを作成
-uv run scanlog collect
-
-# 2. プランの内容を確認
-uv run scanlog preview --latest
-
-# 3. 問題なければ承認
-uv run scanlog approve --plan-id <id>
-
-# 4. スキャン実行
-uv run scanlog execute --plan-id <id>
+# SQLite で直接確認
+sqlite3 ~/.scanlog/scanlog.db "SELECT mode, scanned_at, result_status, target_path FROM scan_results ORDER BY scanned_at DESC LIMIT 10;"
 ```
 
 ---
@@ -154,40 +161,34 @@ uv run scanlog execute --plan-id <id>
 
 DB ファイルの場所: `~/.scanlog/scanlog.db`
 
-### sqlite3 コマンドで接続
-
-```bash
-sqlite3 ~/.scanlog/scanlog.db
-```
-
 ### よく使うクエリ
 
 ```sql
--- スキャンプラン一覧
-SELECT id, mode, status, base_path, created_at FROM scan_plans;
-
--- プランの対象ファイル一覧
-SELECT id, target_path, target_type, scan_mode, target_reason
-FROM plan_items WHERE plan_id = 1;
-
--- スキャン実行履歴
-SELECT id, plan_id, status, started_at, finished_at FROM scan_runs;
-
--- スキャン結果サマリ
-SELECT id, target_path, target_type, result_status, exit_code
-FROM scan_results;
+-- 直近のスキャン結果
+SELECT mode, scanned_at, result_status, target_path
+FROM scan_results
+ORDER BY scanned_at DESC
+LIMIT 10;
 
 -- 感染ファイルの一覧
-SELECT sr.target_path, e.scanned_path, e.virus_name
+SELECT sr.scanned_at, sr.target_path, e.scanned_path, e.virus_name
 FROM scan_result_entries e
 JOIN scan_results sr ON e.scan_result_id = sr.id
-WHERE e.entry_status = 'infected';
-```
+WHERE e.entry_status = 'infected'
+ORDER BY sr.scanned_at DESC;
 
-### テーブル構造の確認
+-- エラーになったファイル
+SELECT sr.scanned_at, e.scanned_path, e.raw_line
+FROM scan_result_entries e
+JOIN scan_results sr ON e.scan_result_id = sr.id
+WHERE e.entry_status IN ('error', 'clamav_error')
+ORDER BY sr.scanned_at DESC;
 
-```bash
-sqlite3 ~/.scanlog/scanlog.db ".schema"
+-- 監視対象ファイルの最終スキャン状況
+SELECT file_path, last_scan_result, last_scanned_at
+FROM file_inventory
+WHERE last_scan_result != 'clean'
+ORDER BY last_scanned_at DESC;
 ```
 
 ---
@@ -196,14 +197,7 @@ sqlite3 ~/.scanlog/scanlog.db ".schema"
 
 | テーブル | 説明 |
 |---|---|
-| `scan_plans` | スキャンプラン（manual_scan / scheduled_scan） |
-| `plan_items` | プランの対象ファイル/ディレクトリ |
-| `scan_runs` | スキャン実行履歴 |
 | `scan_results` | スキャン結果（対象ごと） |
 | `scan_result_entries` | スキャン結果の行ごとの詳細 |
-
-### `scan_plans.status` の遷移
-
-```
-draft → approved → executing → completed / failed
-```
+| `watch_paths` | 監視対象パスの登録 |
+| `file_inventory` | 監視ファイルの最終状態（差分判定に使用） |
